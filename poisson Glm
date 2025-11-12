@@ -1,0 +1,74 @@
+## --------------------------------------------------
+## 0) LOAD & PREP DATA
+## --------------------------------------------------
+library(dplyr)
+library(MASS)
+
+# 1. read
+freq_large <- policies_train  # clean motor policies data
+
+# 2. categorical vars
+fac_vars <- c(
+  "gender","marital","employment","area","primary_usage",
+  "overnight_parking","security_device","ncd_level",
+  "transmission","fuel","body_type"
+)
+
+# 3. predictors
+preds <- c(
+  "age","years_licensed","gender","marital","employment",
+  "area","primary_usage","overnight_parking","security_device",
+  "ncd_level","transmission","fuel","body_type",
+  "vehicle_power","vehicle_age","engine_cc",
+  "vehicle_value","reported_mileage","num_drivers"
+)
+
+# 4. build modelling data
+freq_full <- freq_large %>%
+  mutate(across(all_of(fac_vars), factor)) %>%
+  dplyr::select(n_claims, exposure, all_of(preds)) %>%
+  na.omit()
+
+## --------------------------------------------------
+## 1) MODEL SETUP
+## --------------------------------------------------
+
+form_full <- as.formula(
+  paste("n_claims ~ offset(log(exposure)) +", paste(preds, collapse = " + "))
+)
+
+pois_full <- glm(form_full, data = freq_full, family = poisson())
+
+# Check overdispersion
+dispersion <- sum(residuals(pois_full, type = "pearson")^2) / pois_full$df.residual
+cat("Initial Poisson dispersion:", round(dispersion, 2), "\n")
+
+if (dispersion > 1.5) {
+  nb_full <- glm.nb(form_full, data = freq_full)
+  base_model <- nb_full
+  model_type <- "Negative Binomial"
+} else {
+  base_model <- pois_full
+  model_type <- "Poisson"
+}
+
+cat("Running backward selection using", model_type, "model...\n")
+
+## --------------------------------------------------
+## 2) BACKWARD SELECTION
+## --------------------------------------------------
+
+back_model <- stepAIC(base_model, direction = "backward", trace = TRUE)
+
+## --------------------------------------------------
+## 3) RESULTS
+## --------------------------------------------------
+
+summary(back_model)
+cat("\nModel type:", model_type)
+cat("\nFinal AIC:", AIC(back_model), "\n")
+
+# Final dispersion check
+pearson_resid <- residuals(base_model, type = "pearson")
+dispersion <- sum(pearson_resid^2) / base_model$df.residual
+cat("Final model dispersion parameter =", round(dispersion, 3), "\n")
