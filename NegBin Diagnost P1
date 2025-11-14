@@ -1,0 +1,102 @@
+## --------------------------------------------------
+## DIAGNOSTICS FOR NEGATIVE BINOMIAL GLM (nb_step)
+## --------------------------------------------------
+
+# If needed:
+# library(MASS)
+
+## 1) BASIC RESIDUAL CHECKS
+par(mfrow = c(2, 2))
+
+# Pearson residuals vs fitted
+plot(fitted(nb_step),
+     residuals(nb_step, type = "pearson"),
+     xlab = "Fitted values", ylab = "Pearson residuals",
+     main = "Pearson Residuals vs Fitted")
+abline(h = 0, lty = 2)
+
+# Deviance residuals vs fitted
+plot(fitted(nb_step),
+     residuals(nb_step, type = "deviance"),
+     xlab = "Fitted values", ylab = "Deviance residuals",
+     main = "Deviance Residuals vs Fitted")
+abline(h = 0, lty = 2)
+
+# QQ-plot of deviance residuals
+qqnorm(residuals(nb_step, type = "deviance"),
+       main = "Q-Q Plot (Deviance Residuals)")
+qqline(residuals(nb_step, type = "deviance"))
+
+# Scale-location: sqrt(|Pearson|) vs fitted
+plot(fitted(nb_step),
+     sqrt(abs(residuals(nb_step, type = "pearson"))),
+     xlab = "Fitted values", ylab = "sqrt(|Pearson residual|)",
+     main = "Scale-Location")
+
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~#
+
+## 1) Basic checks
+summary(nb_step)
+anova(nb_step, test = "Chisq")   # LR tests for terms
+
+## 2) Dispersion-ish check
+pearson_res <- residuals(nb_step, type = "pearson")
+dispersion <- sum(pearson_res^2) / nb_step$df.residual
+dispersion
+
+library(MASS)
+library(splines)
+
+nb_step2 <- glm.nb(
+  n_claims ~ ns(age, 4) +
+    gender + marital + employment + area +
+    primary_usage + ncd_level + fuel +
+    body_type + vehicle_power +
+    ns(reported_mileage, 4) +
+    offset(log(exposure)),
+  data = freq_full
+)
+
+AIC(nb_step, nb_step2)
+
+anova(nb_step, nb_step2, test = "Chisq")
+par(mfrow = c(2, 2))
+plot(fitted(nb_step2), residuals(nb_step2, type="pearson"),
+     xlab="Fitted", ylab="Pearson residuals",
+     main="Pearson Residuals vs Fitted"); abline(h=0, lty=2)
+
+plot(fitted(nb_step2), residuals(nb_step2, type="deviance"),
+     xlab="Fitted", ylab="Deviance residuals",
+     main="Deviance Residuals vs Fitted"); abline(h=0, lty=2)
+
+qqnorm(residuals(nb_step2, type="deviance"),
+       main="Q-Q Plot (Deviance Residuals)"); 
+qqline(residuals(nb_step2, type="deviance"))
+
+plot(fitted(nb_step2),
+     sqrt(abs(residuals(nb_step2, type="pearson"))),
+     xlab="Fitted", ylab="sqrt(|Pearson|)",
+     main="Scale-Location")
+par(mfrow=c(1,1))
+
+
+library(DHARMa)
+
+sim_res <- simulateResiduals(nb_step2)
+plot(sim_res)
+testDispersion(sim_res)
+testZeroInflation(sim_res)
+testOutliers(sim_res)
+
+
+plot(sim_res)             # overall residual diagnostics
+testDispersion(sim_res)   # should be non-significant or mild
+testOutliers(sim_res)
+
+to <- testOutliers(sim_res)  # sim_res is your DHARMa object
+to$outliers                  # indices of flagged outliers
+
+length(to$outliers)          # how many?
+length(to$outliers) / nrow(freq_full)  # proportion
+# Happy this part of model diagnostic test onto part 2
